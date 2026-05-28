@@ -48,7 +48,7 @@ export default function MagnaDifferenceSection() {
             Why Candidates Choose Magna Hire
           </h2>
           <p className="text-lg text-gray-500">
-            We don't just post jobs. We build a bridge between your profile and the recruiter who is
+            We don&apos;t just post jobs. We build a bridge between your profile and the recruiter who is
             actively looking for someone exactly like you.
           </p>
         </div>
@@ -79,7 +79,7 @@ export default function MagnaDifferenceSection() {
                 AI Recruiter Network · Active Now
               </div>
               <h3 className="text-3xl font-bold text-white mb-4 leading-tight">
-                Your Profile Lives Inside the Recruiter's AI Dashboard
+                Your Profile Lives Inside the Recruiter&apos;s AI Dashboard
               </h3>
               <p className="text-white/80 leading-relaxed mb-6">
                 Magna Hire powers an AI-assisted recruiter dashboard used by hiring managers daily.

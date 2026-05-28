@@ -124,7 +124,7 @@ export interface CandidateNotification {
 export interface JobQuestion {
   id: number;
   question: string;
-  question_type: 'text' | 'yes_no' | 'multiple_choice';
+  question_type: 'text' | 'yes_no' | 'multiple_choice' | 'multiple_select';
   options?: string[] | null;
   required: boolean;
 }

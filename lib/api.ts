@@ -4,6 +4,7 @@ import type {
   CandidateProfile, ProfileUpdatePayload,
   AdditionalData, ProfileCompletion,
   CandidateNotification,
+  JobQuestion,
 } from '@/types';
 
 // Empty string = relative /api/* paths — the Next.js proxy (next.config.mjs rewrites)
