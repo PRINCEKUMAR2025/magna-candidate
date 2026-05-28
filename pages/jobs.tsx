@@ -1,12 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import Layout from '@/components/layout/Layout';
 import Toast from '@/components/common/Toast';
-import { getPublicJobs, applyToJob, checkApplied } from '@/lib/api';
+import { getPublicJobs, applyToJob, checkApplied, getJobQuestions } from '@/lib/api';
+import type { QuestionAnswer } from '@/lib/api';
 import { useCandidateAuth } from '@/components/auth/CandidateAuthContext';
-import type { Job, ProfileCompletion } from '@/types';
+import type { Job, ProfileCompletion, JobQuestion } from '@/types';
 
 // ── Profile Incomplete Modal ─────────────────────────────────
 
@@ -70,6 +71,128 @@ function ProfileIncompleteModal({
   );
 }
 
+// ── Questionnaire Modal ──────────────────────────────────────
+
+function QuestionnaireModal({
+  questions, onSubmit, onClose, submitting,
+}: {
+  questions: JobQuestion[];
+  onSubmit: (answers: QuestionAnswer[]) => void;
+  onClose: () => void;
+  submitting: boolean;
+}) {
+  const [answers, setAnswers] = useState<Record<number, string>>({});
+  const [errors,  setErrors]  = useState<number[]>([]);
+
+  const setAnswer = (qId: number, val: string) => {
+    setAnswers(prev => ({ ...prev, [qId]: val }));
+    setErrors(prev => prev.filter(id => id !== qId));
+  };
+
+  const toggleMultiSelect = (qId: number, opt: string) => {
+    setAnswers(prev => {
+      const cur     = prev[qId] ? prev[qId].split(',').map(s => s.trim()).filter(Boolean) : [];
+      const updated = cur.includes(opt) ? cur.filter(o => o !== opt) : [...cur, opt];
+      return { ...prev, [qId]: updated.join(', ') };
+    });
+    setErrors(prev => prev.filter(id => id !== qId));
+  };
+
+  const handleSubmit = () => {
+    const missing = questions.filter(q => q.required && !answers[q.id]?.trim()).map(q => q.id);
+    if (missing.length) { setErrors(missing); return; }
+    onSubmit(questions.map(q => ({ question_id: q.id, answer: answers[q.id] ?? '' })));
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-purple-50 flex items-center justify-center">
+              <span className="text-purple-600 text-base">📋</span>
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-gray-800">Application Questions</h3>
+              <p className="text-xs text-gray-400">Please answer all required questions</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition">×</button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 px-6 py-4 space-y-5">
+          {questions.map((q, i) => (
+            <div key={q.id}>
+              <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                {i + 1}. {q.question}
+                {q.required && <span className="text-red-500 ml-1">*</span>}
+              </label>
+
+              {q.question_type === 'text' && (
+                <textarea
+                  rows={3}
+                  className={`w-full border rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-purple-300 ${errors.includes(q.id) ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
+                  placeholder="Your answer…"
+                  value={answers[q.id] ?? ''}
+                  onChange={e => setAnswer(q.id, e.target.value)}
+                />
+              )}
+
+              {q.question_type === 'yes_no' && (
+                <div className="flex gap-4">
+                  {['Yes', 'No'].map(opt => (
+                    <label key={opt} className={`flex items-center gap-2 cursor-pointer px-4 py-2 rounded-lg border transition ${answers[q.id] === opt ? 'border-purple-400 bg-purple-50' : 'border-gray-200'}`}>
+                      <input type="radio" name={`q_${q.id}`} value={opt} checked={answers[q.id] === opt} onChange={() => setAnswer(q.id, opt)} className="accent-purple-600" />
+                      <span className="text-sm text-gray-700 font-medium">{opt}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+
+              {q.question_type === 'multiple_choice' && q.options && (
+                <div className="space-y-2">
+                  {q.options.map(opt => (
+                    <label key={opt} className={`flex items-center gap-2 cursor-pointer px-4 py-2 rounded-lg border transition ${answers[q.id] === opt ? 'border-purple-400 bg-purple-50' : 'border-gray-200'}`}>
+                      <input type="radio" name={`q_${q.id}`} value={opt} checked={answers[q.id] === opt} onChange={() => setAnswer(q.id, opt)} className="accent-purple-600" />
+                      <span className="text-sm text-gray-700">{opt}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+
+              {q.question_type === 'multiple_select' && q.options && (
+                <div className="space-y-2">
+                  {q.options.map(opt => {
+                    const selected = (answers[q.id] ?? '').split(',').map(s => s.trim()).includes(opt);
+                    return (
+                      <label key={opt} className={`flex items-center gap-2 cursor-pointer px-4 py-2 rounded-lg border transition ${selected ? 'border-purple-400 bg-purple-50' : 'border-gray-200'}`}>
+                        <input type="checkbox" value={opt} checked={selected} onChange={() => toggleMultiSelect(q.id, opt)} className="accent-purple-600 w-4 h-4" />
+                        <span className="text-sm text-gray-700">{opt}</span>
+                      </label>
+                    );
+                  })}
+                  <p className="text-xs text-gray-400 mt-1">Select all that apply</p>
+                </div>
+              )}
+
+              {errors.includes(q.id) && (
+                <p className="text-red-500 text-xs mt-1">This field is required</p>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <div className="px-6 py-4 border-t border-gray-100 flex gap-3">
+          <button onClick={onClose} className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50 transition">Cancel</button>
+          <button onClick={handleSubmit} disabled={submitting} className="flex-1 bg-purple-600 text-white rounded-xl py-2.5 text-sm font-semibold hover:bg-purple-700 disabled:opacity-60 transition">
+            {submitting ? 'Submitting…' : 'Submit Application'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Apply Button ─────────────────────────────────────────────
 
 function ApplyNowButton({
@@ -81,10 +204,13 @@ function ApplyNowButton({
 }) {
   const { candidate, loading: authLoading } = useCandidateAuth();
   const router = useRouter();
-  const [applied,  setApplied]  = useState(false);
-  const [applying, setApplying] = useState(false);
-  const [checked,  setChecked]  = useState(false);
-  const [toast,    setToast]    = useState(false);
+  const [applied,    setApplied]    = useState(false);
+  const [applying,   setApplying]   = useState(false);
+  const [checked,    setChecked]    = useState(false);
+  const [toast,      setToast]      = useState(false);
+  const [questions,  setQuestions]  = useState<JobQuestion[]>([]);
+  const [showQModal, setShowQModal] = useState(false);
+  const fetchedQs = useRef<JobQuestion[] | null>(null);
 
   useEffect(() => {
     if (authLoading) return;
@@ -95,22 +221,43 @@ function ApplyNowButton({
       .finally(() => setChecked(true));
   }, [candidate, authLoading, job.id]);
 
-  const handleApply = async () => {
-    if (!candidate) { router.push(`/login?redirect=/jobs`); return; }
-    if (applying || applied) return;
+  const submitApplication = async (answers: QuestionAnswer[]) => {
     setApplying(true);
     try {
-      const result = await applyToJob(job.id);
+      const result = await applyToJob(job.id, answers);
       if (result.profile_incomplete) {
+        setShowQModal(false);
         onIncomplete(result.completion);
       } else {
+        setShowQModal(false);
         setApplied(true);
         setToast(true);
       }
     } catch {
-      // network / server error — silent
+      // silent — modal stays open so candidate can retry
     } finally {
       setApplying(false);
+    }
+  };
+
+  const handleClick = async () => {
+    if (!candidate) { router.push(`/login?redirect=/jobs`); return; }
+    if (applying || applied) return;
+
+    // Fetch questions once, then decide
+    if (!fetchedQs.current) {
+      try {
+        fetchedQs.current = await getJobQuestions(job.id);
+      } catch {
+        fetchedQs.current = [];
+      }
+    }
+
+    if (fetchedQs.current.length > 0) {
+      setQuestions(fetchedQs.current);
+      setShowQModal(true);
+    } else {
+      await submitApplication([]);
     }
   };
 
@@ -138,8 +285,16 @@ function ApplyNowButton({
           onDone={() => setToast(false)}
         />
       )}
+      {showQModal && (
+        <QuestionnaireModal
+          questions={questions}
+          onSubmit={submitApplication}
+          onClose={() => setShowQModal(false)}
+          submitting={applying}
+        />
+      )}
       <button
-        onClick={handleApply}
+        onClick={handleClick}
         disabled={applying}
         className="hami-btn"
         style={{ height: 36, lineHeight: '36px', padding: '0 18px', fontSize: 13 }}
