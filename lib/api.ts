@@ -6,7 +6,10 @@ import type {
   CandidateNotification,
 } from '@/types';
 
-const BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3131';
+// Empty string = relative /api/* paths — the Next.js proxy (next.config.mjs rewrites)
+// forwards them to the Flask backend.  NEXT_PUBLIC_API_BASE can override this for
+// special deployments, but should normally be left empty.
+const BASE = process.env.NEXT_PUBLIC_API_BASE ?? '';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
@@ -111,12 +114,24 @@ export interface ApplyBlockedResult {
   profile_incomplete: true;
   completion: ProfileCompletion;
 }
+export interface QuestionAnswer { question_id: number; answer: string; }
 
-export async function applyToJob(jobId: number | string): Promise<ApplyResult | ApplyBlockedResult> {
+export async function getJobQuestions(jobId: number | string): Promise<JobQuestion[]> {
+  const data = await request<{ success: true; questions: JobQuestion[] }>(
+    `/api/public/jobs/${jobId}/questions`
+  );
+  return data.questions;
+}
+
+export async function applyToJob(
+  jobId: number | string,
+  answers: QuestionAnswer[] = []
+): Promise<ApplyResult | ApplyBlockedResult> {
   const res = await fetch(`${BASE}/api/candidate/jobs/${jobId}/apply`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ answers }),
   });
   const data = await res.json();
   if (!data.success && data.profile_incomplete) {
@@ -158,6 +173,10 @@ export async function uploadResume(file: File): Promise<{ resume_url: string; wa
     credentials: 'include',
     body: formData,
   });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Upload failed (${res.status})`);
+  }
   const data = await res.json();
   if (!data.success) throw new Error(data.error ?? 'Upload failed');
   return { resume_url: data.resume_url as string, warning: data.warning };
@@ -169,11 +188,16 @@ export async function getCandidateNotifications(limit = 30): Promise<{
   notifications: CandidateNotification[];
   unread: number;
 }> {
-  const res = await fetch(`${BASE}/api/notifications/candidate?limit=${limit}`, {
-    credentials: 'include',
-  });
-  const data = await res.json();
-  return { notifications: data.notifications ?? [], unread: data.unread ?? 0 };
+  try {
+    const res = await fetch(`${BASE}/api/notifications/candidate?limit=${limit}`, {
+      credentials: 'include',
+    });
+    if (!res.ok) return { notifications: [], unread: 0 };
+    const data = await res.json();
+    return { notifications: data.notifications ?? [], unread: data.unread ?? 0 };
+  } catch {
+    return { notifications: [], unread: 0 };
+  }
 }
 
 export async function markCandidateNotificationRead(id: number): Promise<void> {

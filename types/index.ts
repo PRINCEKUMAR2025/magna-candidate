@@ -121,6 +121,14 @@ export interface CandidateNotification {
   created_at: string;
 }
 
+export interface JobQuestion {
+  id: number;
+  question: string;
+  question_type: 'text' | 'yes_no' | 'multiple_choice';
+  options?: string[] | null;
+  required: boolean;
+}
+
 export interface ProfileUpdatePayload {
   name: string;
   phone: string;
